@@ -12,11 +12,10 @@ public Plugin myinfo =
 
 char ct_steamIDs[5][32];
 char tt_steamIDs[5][32];
-int player_teamSelected[10];
 
 public void OnPluginStart()
 {
-	HookEvent("player_team", EventPlayerTeam, EventHookMode_Pre);  
+	HookEvent("player_activate", PlayerActivate, EventHookMode_Post);  
 	GetAllowedTeamsSteamIDs();
 }
 
@@ -29,8 +28,6 @@ public void OnClientPutInServer(int client)
 	if(!IsClientAllowed(authId)) {
 		KickClient(client, "You are not allowed to enter this server");
 	}
-
-	RemoveClientTeamSelected(client);
 }
 
 public void GetAllowedTeamsSteamIDs()
@@ -57,10 +54,6 @@ public void GetAllowedTeamsSteamIDs()
 	}
 
 	CloseHandle(fileHandle);
-
-	for(int j = 0; j < 10; j++) {
-		player_teamSelected[j] = -1;
-	}
 }
 
 public bool IsClientAllowed(char[] authId)
@@ -70,13 +63,13 @@ public bool IsClientAllowed(char[] authId)
 	}
 
 	for(int i = 0; i < 5; i++) {
-		if(strcmp(ct_steamIDs[i], authId) == 0) {
+		if(StrEqual(ct_steamIDs[i], authId)) {
 			return true;
 		}
 	}
 
 	for(int i = 0; i < 5; i++) {
-		if(strcmp(tt_steamIDs[i], authId) == 0) {
+		if(StrEqual(tt_steamIDs[i], authId)) {
 			return true;
 		}
 	}
@@ -86,10 +79,13 @@ public bool IsClientAllowed(char[] authId)
 
 public void SelectTeam(int client, char[] authId)
 {
+	PrintToServer("TEAM AUTHORIZE ===== SELECTING TEAM FOR: %s", authId);
 	for(int i = 0; i < 5; i++) {
-		if(strcmp(ct_steamIDs[i], authId) == 0) {
+		if(StrEqual(ct_steamIDs[i], authId)) {
+			PrintToServer("TEAM AUTHORIZE ===== SELECTED CT TEAM");
 			SwitchTeam(client, CS_TEAM_CT);
-		} else if(strcmp(tt_steamIDs[i], authId) == 0) {
+		} else if(StrEqual(tt_steamIDs[i], authId)) {
+			PrintToServer("TEAM AUTHORIZE ===== SELECTED TT TEAM");
 			SwitchTeam(client, CS_TEAM_T);
 		}
 	}
@@ -97,51 +93,13 @@ public void SelectTeam(int client, char[] authId)
 
 public void SwitchTeam(int client, int team)
 {
-	if(PlayerTeamSelectedHasClient(client)) {
-		return;
-	}
-
-	StoreClientTeamSelected(client);
-
 	int currentTeam = GetClientTeam(client);
-	PrintToServer("TEAM AUTHORIZE == CHANGE CLIENT: %d FROM TEAM: %d TO TEAM %d", client, currentTeam, team);
 	if(currentTeam != team) {
-		CS_SwitchTeam(client, team);
+		ChangeClientTeam(client, team);
 	}
 }
 
-public bool PlayerTeamSelectedHasClient(int client)
-{
-	for(int i = 0; i < 10; i++) {
-		if(player_teamSelected[i] == client) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
-public void RemoveClientTeamSelected(int client)
-{
-	for(int i = 0; i < 10; i++) {
-		if(player_teamSelected[i] == client) {
-			player_teamSelected[i] = -1;
-			break;
-		}
-	}
-}
-
-public void StoreClientTeamSelected(int client)
-{
-	for(int i = 0; i < 10; i++) {
-		if(player_teamSelected[i] == -1) {
-			player_teamSelected[i] = client;
-			break;
-		}
-	}
-}
-
-public EventPlayerTeam(Handle event, const char[] name, bool dontBroadcast)
+public Action PlayerActivate(Handle event, const char[] name, bool dontBroadcast)
 {
 	char authId[32];
 	int client = GetClientOfUserId(GetEventInt(event,"userid"));
