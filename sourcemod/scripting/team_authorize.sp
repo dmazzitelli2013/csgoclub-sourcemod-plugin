@@ -10,11 +10,14 @@ public Plugin myinfo =
 	url = ""
 };
 
+Handle g_hLocked = INVALID_HANDLE;
 char ct_steamIDs[5][32];
 char tt_steamIDs[5][32];
 
 public void OnPluginStart()
 {
+	AddCommandListener(Command_JoinTeam, "jointeam");
+	g_hLocked = CreateConVar("sm_lock_teams", "1", "Enable or disable locking teams during match", FCVAR_NOTIFY);
 	HookEvent("player_activate", PlayerActivate, EventHookMode_Post);  
 	GetAllowedTeamsSteamIDs();
 }
@@ -28,6 +31,11 @@ public void OnClientPutInServer(int client)
 	if(!IsClientAllowed(authId)) {
 		KickClient(client, "You are not allowed to enter this server");
 	}
+}
+
+public void KickAllPlayers()
+{
+	ServerCommand("sm_kick @all");
 }
 
 public void GetAllowedTeamsSteamIDs()
@@ -79,13 +87,10 @@ public bool IsClientAllowed(char[] authId)
 
 public void SelectTeam(int client, char[] authId)
 {
-	PrintToServer("TEAM AUTHORIZE ===== SELECTING TEAM FOR: %s", authId);
 	for(int i = 0; i < 5; i++) {
 		if(StrEqual(ct_steamIDs[i], authId)) {
-			PrintToServer("TEAM AUTHORIZE ===== SELECTED CT TEAM");
 			SwitchTeam(client, CS_TEAM_CT);
 		} else if(StrEqual(tt_steamIDs[i], authId)) {
-			PrintToServer("TEAM AUTHORIZE ===== SELECTED TT TEAM");
 			SwitchTeam(client, CS_TEAM_T);
 		}
 	}
@@ -106,3 +111,17 @@ public Action PlayerActivate(Handle event, const char[] name, bool dontBroadcast
 	GetClientAuthId(client, AuthId_Steam2, authId, sizeof(authId));
 	SelectTeam(client, authId);
 }
+
+public Action Command_JoinTeam(client, const String:command[], args)
+{    
+    if(client != 0) {
+        if(IsClientInGame(client) && !IsFakeClient(client)) {
+            if(GetClientTeam(client) > 1 && GetConVarBool(g_hLocked)) {
+                PrintToChat(client, "\x01 \x07You cannot change your team during a match!");
+                return Plugin_Stop;
+            }
+        }
+    }
+
+    return Plugin_Continue;
+}  
