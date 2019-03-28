@@ -13,29 +13,100 @@ public Plugin myinfo =
 Handle g_hLocked = INVALID_HANDLE;
 char ct_steamIDs[5][32];
 char tt_steamIDs[5][32];
+char all_steamIDs[10][32];
+int all_clients[10];
 
 public void OnPluginStart()
 {
 	AddCommandListener(Command_JoinTeam, "jointeam");
 	g_hLocked = CreateConVar("sm_lock_teams", "1", "Enable or disable locking teams during match", FCVAR_NOTIFY);
-	HookEvent("player_activate", PlayerActivate, EventHookMode_Post);  
+	HookEvent("player_activate", PlayerActivate, EventHookMode_Post);
 	GetAllowedTeamsSteamIDs();
+
+	for(int i = 0; i < 10; i++) {
+		all_clients[i] = -1;
+	}
 }
 
 public void OnClientPutInServer(int client)
 {
 	char authId[32];
-
 	GetClientAuthId(client, AuthId_Steam2, authId, sizeof(authId));
 
 	if(!IsClientAllowed(authId)) {
 		KickClient(client, "You are not allowed to enter this server");
+	} else {
+		AssociateSteamIdWithClient(authId, client);
 	}
 }
 
-public void KickAllPlayers()
+public void OnClientDisconnect_Post(int client)
 {
-	ServerCommand("sm_kick @all");
+	char authId[32];
+	GetClientAuthId(client, AuthId_Steam2, authId, sizeof(authId));
+	DisassociateSteamIdWithClient(authId);
+}
+
+public Action CS_OnTerminateRound(float &delay, CSRoundEndReason &reason) 
+{ 
+	WriteScoreFile();
+	return Plugin_Continue; 
+}
+
+public void AssociateSteamIdWithClient(char[] steamID, int client)
+{
+	for(int i = 0; i < 10; i++) {
+		if(StrEqual(steamID, all_steamIDs[i])) {
+			all_clients[i] = client;
+			break;
+		}
+	}
+}
+
+public void DisassociateSteamIdWithClient(char[] steamID)
+{
+	for(int i = 0; i < 10; i++) {
+		if(StrEqual(steamID, all_steamIDs[i])) {
+			all_clients[i] = -1;
+			break;
+		}
+	}
+}
+
+public void WriteScoreFile()
+{
+	char path[PLATFORM_MAX_PATH];
+	char scoreString[256], ctTeam[256], tTeam[256];
+	BuildPath(Path_SM, path, PLATFORM_MAX_PATH, "data/match_result.txt");
+	DeleteFile(path, false, NULL_STRING);
+
+	Handle fileHandle = OpenFile(path, "w");
+
+	int ctScore = CS_GetTeamScore(CS_TEAM_CT);
+	int tScore = CS_GetTeamScore(CS_TEAM_T);
+	GetSteamIDsStringByCurrentTeam(CS_TEAM_CT, ctTeam, sizeof(ctTeam));
+	GetSteamIDsStringByCurrentTeam(CS_TEAM_T, tTeam, sizeof(tTeam));
+	Format(scoreString, 256, "CT=%d;T=%d;CT_TEAM=%s;T_TEAM=%s", ctScore, tScore, ctTeam, tTeam);
+	
+	WriteFileString(fileHandle, scoreString, true);
+	CloseHandle(fileHandle);
+}
+
+public void GetSteamIDsStringByCurrentTeam(int team, char[] buffer, int bufferLength)
+{
+	char steamIDs[5][32];
+	int numberClients = 0;
+
+	for(int i = 0; i < 10; i++) {
+		if(all_clients[i] > 0) {
+			if(GetClientTeam(all_clients[i]) == team) {
+				GetClientAuthId(all_clients[i], AuthId_Steam2, steamIDs[numberClients], 32);
+				numberClients++;
+			}
+		}
+	}
+
+	ImplodeStrings(steamIDs, numberClients, ",", buffer, bufferLength);
 }
 
 public void GetAllowedTeamsSteamIDs()
@@ -45,9 +116,12 @@ public void GetAllowedTeamsSteamIDs()
 	Handle fileHandle = OpenFile(path, "r");
 	
 	int i = 0;
+	int j = 0;
 	while(!IsEndOfFile(fileHandle) && ReadFileLine(fileHandle, ct_steamIDs[i], 32) && i < 5) {
 		TrimString(ct_steamIDs[i]);
+		all_steamIDs[j] = ct_steamIDs[i];
 		i++;
+		j++;
 	}
 
 	CloseHandle(fileHandle);
@@ -58,7 +132,9 @@ public void GetAllowedTeamsSteamIDs()
 	i = 0;
 	while(!IsEndOfFile(fileHandle) && ReadFileLine(fileHandle, tt_steamIDs[i], 32) && i < 5) {
 		TrimString(tt_steamIDs[i]);
+		all_steamIDs[j] = ct_steamIDs[i];
 		i++;
+		j++;
 	}
 
 	CloseHandle(fileHandle);
